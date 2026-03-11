@@ -1,0 +1,47 @@
+library(tidyverse)
+library(lubridate)
+
+# 1. Конфигурация (константы вверху)
+CUTOFF_DATE <- as.Date("2026-01-01")
+MIN_CONVERSION <- 0.09
+MAX_CONVERSION <- 1.0
+
+# 2. Основной конвейер очистки. 'Data' - raw data from cube
+df_cleaned <- data %>%
+  filter(
+    # Шаг 1: Удалить "призрачные продажи" (Логика: нет продаж, если нет людей)
+    !(Receipts > 0 & (People == 0 | is.na(People))),
+    
+    # Шаг 2: Удалить час 0 (полночь часто содержит пакетно обработанные данные)
+    Hour != 0,
+    
+    # Шаг 3: Удалить будущие даты
+    Date < CUTOFF_DATE,
+    
+    # Шаг 4: (Автоматически обрабатывает NA)
+    Conversion > MIN_CONVERSION,
+    Conversion <= MAX_CONVERSION
+  ) %>%
+  # Шаг 5: Подготовка к регрессии (Убедиться в корректных типах данных)
+  mutate(
+    Date = as.Date(Date),
+    Weekday = factor(wday(Date, label = TRUE), ordered = FALSE), # Категориальная переменная
+    Hour = factor(Hour) # Рассматривать Hour как категориальную переменную для регрессии при необходимости
+  ) %>%
+  # Опционально: Удалить строки с оставшимися NA в ключевых предикторах
+  drop_na(Receipts, People, Conversion)
+
+# 3. Краткий отчет для проверки
+report <- data.frame(
+  Stage = c("Original", "Cleaned", "Removed"),
+  Count = c(nrow(data), nrow(df_cleaned), nrow(data) - nrow(df_cleaned))
+)
+print(report)
+
+# Проверки на здравый смысл
+stopifnot(all(df_cleaned$Hour != 0))
+stopifnot(max(df_cleaned$Date) < CUTOFF_DATE)
+stopifnot(min(df_cleaned$Conversion) > MIN_CONVERSION)
+
+# Сохранить результат. Исходник для обучения модели LR
+write.csv(df_cleaned, "final_cleaned_data.csv", row.names = FALSE)
