@@ -1,0 +1,50 @@
+library(dplyr) 
+
+library(lubridate)
+prepare_features_turbo <- function(data) { 
+
+  data$Date <- as.Date(data$Date) 
+  data$Month <- month(data$Date) 
+  data$Day_of_week <- wday(data$Date, label = FALSE) 
+
+  # Log Transformations (Crucial for the "fan shape" fix)
+  data$log_People <- log1p(data$People)  
+  data$log_Receipts <- log1p(data$Receipts) 
+  # Polynomial (The "Curve" for Hours) 
+
+  data$Hour_Sq <- data$Hour^2
+  return(data) 
+
+}
+
+df_cleaned$Hour <- as.integer(as.character(df_cleaned$Hour))
+df_lfl <- prepare_features_turbo(df_cleaned)
+print("Training Turbo Specific Model... (This might take a minute)") 
+
+
+model_final <- lm(log_People ~ log_Receipts + as.factor(Day_of_week) +  
+
+                  Hour + Hour_Sq + Code,  
+
+                  data = df_lfl)
+
+
+preds_log <- predict(model_final, newdata = df_lfl) 
+preds_real <- expm1(preds_log)
+
+
+SS_res <- sum((df_lfl$People - preds_real)^2)
+SS_tot <- sum((df_lfl$People - mean(df_lfl$People))^2)
+Real_R2 <- 1 - (SS_res / SS_tot) 
+
+
+print("------------------------------------------------")
+print(paste("Previous Best (Linear): 0.645"))
+print(paste("Current Model (Real R2):", round(Real_R2, 4)))
+print("------------------------------------------------")
+
+coefs <- data.frame(
+  Term = names(coef(model_final)),
+  Coefficient = as.numeric(coef(model_final)),
+  Model_Type = "Final_Turbo_Specific"
+)

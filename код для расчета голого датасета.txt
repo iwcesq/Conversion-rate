@@ -1,0 +1,14 @@
+library(lubridate)
+
+match_here$Date <- as.Date(match_here$Date)
+match_here$Month <- month(match_here$Date)
+match_here$Day_of_week <- wday(match_here$Date, label = FALSE)
+
+match_here$log_Receipts <- log1p(match_here$Receipts)
+match_here$Hour_Sq <- match_here$Hour^2
+
+log_predictions <- predict(model_final, newdata = match_here)
+match_here$calculated_people <- expm1(log_predictions)
+match_here$calculated_people <- round(match_here$calculated_people, 0)
+
+print(head(match_here[c("Date", "Hour", "Receipts", "calculated_people")]))

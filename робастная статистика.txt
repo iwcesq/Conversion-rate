@@ -1,0 +1,47 @@
+library(dplyr)
+library(moments)
+
+df_analysis <- df %>%
+  mutate(
+    Current_Conversion = ifelse(People > 0.001, Receipts / People, 0)
+  ) %>%
+  group_by(Code, Year, Hour, Month, Day_of_week) %>%
+  mutate(
+    Is_Conversion_Bad = case_when(
+      Current_Conversion > 0.86 ~ TRUE,
+      Current_Conversion < 0.07 & Receipts > 0 ~ TRUE,
+      People == 0 ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    Error_For_Stats = ifelse(Is_Conversion_Bad, NA, People - calculated_people),
+    Raw_Error = People - calculated_people,
+    Skew_Value = skewness(Error_For_Stats, na.rm = TRUE),
+    Kurt_Value = kurtosis(Error_For_Stats, na.rm = TRUE),
+    Median_Error = median(Error_For_Stats, na.rm = TRUE),
+    MAD_Value = mad(Error_For_Stats, constant = 1.4826, na.rm = TRUE),
+    Median_Error = ifelse(is.na(Median_Error), 0, Median_Error),
+    MAD_Value = ifelse(is.na(MAD_Value), 0, MAD_Value),
+    Effective_MAD = ifelse(MAD_Value == 0, 2.5, MAD_Value),
+    Modified_Z_Score = (Raw_Error - Median_Error) / Effective_MAD,
+    Final_People = case_when(
+      Is_Conversion_Bad == TRUE ~ calculated_people,
+      abs(Modified_Z_Score) > 2.8 & abs(Raw_Error) > 5 ~ calculated_people,
+      TRUE ~ People
+    ),
+    Fix_Type = case_when(
+      Is_Conversion_Bad == TRUE ~ "Hard Rule (Conversion)",
+      abs(Modified_Z_Score) > 2.8 & abs(Raw_Error) > 5 ~ "Statistical Outlier",
+      TRUE ~ "Normal"
+    )
+  ) %>%
+  ungroup()
+
+print("--- SUMMARY OF FIXES ---")
+print(table(df_analysis$Fix_Type))
+
+print("--- BAD CONVERSION EXAMPLES ---")
+bad_conv_examples <- df_analysis %>%
+  filter(Fix_Type == "Hard Rule (Conversion)") %>%
+  select(Code, Date, Hour, People, Receipts, Current_Conversion, Final_People) %>%
+  head(10)
+print(bad_conv_examples)
